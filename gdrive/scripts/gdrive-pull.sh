@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Односторонняя копия Google Drive -> локальный диск (rclone copy, ничего не удаляется).
-# Запускать от пользователя RUN_USER из .env, не через sudo.
-# Отладка: LOG_LEVEL=DEBUG ./gdrive-pull.sh
+# One-way copy Google Drive -> local disk (rclone copy, nothing is deleted).
+# Run as RUN_USER from .env, not via sudo.
+# Debug: LOG_LEVEL=DEBUG ./gdrive-pull.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
-# Персональные настройки (SRC_REMOTE, DST_DIR, MOUNT_POINT) лежат в .env рядом со скриптом
+# Personal settings (SRC_REMOTE, DST_DIR, MOUNT_POINT) live in .env next to the script
 # shellcheck source=/dev/null
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
-  echo "Missing $SCRIPT_DIR/.env: запускайте установленную копию (см. deploy.sh)" >&2
+  echo "Missing $SCRIPT_DIR/.env: run the installed copy (see deploy.sh)" >&2
   exit 1
 fi
 . "$SCRIPT_DIR/.env"
@@ -24,21 +24,21 @@ LOG_LEVEL="${LOG_LEVEL:-INFO}"
 LOG_DIR="$SCRIPT_DIR/log"
 LOCK_FILE="$SCRIPT_DIR/.lock"
 
-# --- Блокировка: общая для таймера и ручных запусков
+# --- Lock: shared by the timer and manual runs
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
   echo "Previous run still in progress, skip"
   exit 0
 fi
 
-# --- Лог: имя = время старта прогона
+# --- Log: file name = run start time
 LOG="$LOG_DIR/$(date +%Y-%m-%d_%H-%M-%S).log"
 mkdir -p "$LOG_DIR"
 find "$LOG_DIR" -name '*.log' -mtime +"$KEEP_LOG_DAYS" -delete
 
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOG" >&2; }
 
-# --- Проверки
+# --- Checks
 if ! mountpoint -q "$MOUNT"; then
   log "ERROR: $MOUNT is not mounted, skip"
   exit 1
@@ -50,7 +50,7 @@ if [ "$FREE_GB" -lt "$MIN_FREE_GB" ]; then
   exit 1
 fi
 
-# --- Синк
+# --- Sync
 log "START copy $SRC -> $DST"
 rc=0
 rclone copy "$SRC" "$DST" \

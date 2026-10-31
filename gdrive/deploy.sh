@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Установка скрипта и systemd-юнитов по настройкам из .env.
-# Запускать от пользователя RUN_USER (sudo вызывается внутри).
+# Installs the script and systemd units using the settings from .env.
+# Run as RUN_USER (sudo is invoked internally).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -13,7 +13,7 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# Копии без CR: файлы могли попасть на Pi из Windows с CRLF
+# Copies without CR: files may have reached the Pi from Windows with CRLF
 strip_cr() { sed 's/\r$//' "$1" > "$2"; }
 
 strip_cr "$HERE/.env" "$TMP_DIR/env"

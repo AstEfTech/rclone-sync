@@ -1,106 +1,108 @@
-# rclone-sync: Google Drive → локальный диск
+# rclone-sync: Google Drive → local disk
 
-Односторонняя синхронизация Google Drive → локальный диск на Raspberry Pi каждые 15 минут (источник, приёмник и пользователь задаются в `.env`).
-Используется только `rclone copy`: ничего не удаляется.
+[Русская версия](README_RU.md)
 
-## Окружение
+One-way sync from Google Drive to a local disk on a Raspberry Pi every 15 minutes (source, destination and user are set in `.env`).
+Only `rclone copy` is used: nothing is ever deleted.
 
-| Что | Значение |
+## Environment
+
+| What | Value |
 |---|---|
-| Хост | Raspberry Pi (Linux); rclone, скрипт и systemd работают под `RUN_USER`, не под root |
-| Источник | `SRC_REMOTE` (например `gdrive:Media`; обычный аккаунт Google, OAuth client типа **Desktop app**, приложение In production) |
-| Приёмник | `DST_DIR` на диске, смонтированном в `MOUNT_POINT` |
-| Конфиг rclone | `~/.config/rclone/rclone.conf` пользователя `RUN_USER` (`chmod 600`) |
-| Установка rclone | скриптом с rclone.org |
+| Host | Raspberry Pi (Linux); rclone, the script and systemd run as `RUN_USER`, not root |
+| Source | `SRC_REMOTE` (e.g. `gdrive:Media`; a regular Google account, OAuth client of type **Desktop app**, app status In production) |
+| Destination | `DST_DIR` on a disk mounted at `MOUNT_POINT` |
+| rclone config | `~/.config/rclone/rclone.conf` of `RUN_USER` (`chmod 600`) |
+| rclone install | via the script from rclone.org |
 
-Получение OAuth client ID и токена, настройка remote `gdrive`: [gdrive/CONNECTION_README.md](gdrive/CONNECTION_README.md). Сделать это нужно до `deploy.sh`.
+Getting the OAuth client ID and token and setting up the `gdrive` remote: [gdrive/CONNECTION_README.md](gdrive/CONNECTION_README.md). Do this before running `deploy.sh`.
 
-## Структура
+## Layout
 
 ```
 gdrive/
-├── .env.example                 # шаблон персональных настроек
-├── CONNECTION_README.md         # получение Google-кредов и настройка rclone
-├── deploy.sh                    # установка скрипта и юнитов
+├── .env.example                 # template for personal settings
+├── CONNECTION_README.md         # getting Google credentials and configuring rclone
+├── deploy.sh                    # installs the script and units
 ├── scripts/
-│   ├── gdrive-pull.sh           # основной скрипт
-│   └── watch-log.sh             # tail -f последнего лога
+│   ├── gdrive-pull.sh           # main script
+│   └── watch-log.sh             # tail -f of the latest log
 └── system/
-    ├── gdrive-pull.service.in   # шаблон юнита: oneshot, Nice=10, IOSchedulingClass=idle
+    ├── gdrive-pull.service.in   # unit template: oneshot, Nice=10, IOSchedulingClass=idle
     └── gdrive-pull.timer        # OnCalendar=*:0/15, Persistent=true, RandomizedDelaySec=30
 ```
 
-Расположение на Pi (`APP_DIR` из `.env`):
+Layout on the Pi (`APP_DIR` from `.env`):
 
-| Файл | Путь |
+| File | Path |
 |---|---|
-| Скрипт | `$APP_DIR/gdrive-pull.sh` |
-| Логи | `$APP_DIR/log/ГГГГ-ММ-ДД_ЧЧ-ММ-СС.log` (по файлу на прогон, старше 14 дней удаляются) |
+| Script | `$APP_DIR/gdrive-pull.sh` |
+| Logs | `$APP_DIR/log/YYYY-MM-DD_HH-MM-SS.log` (one per run, deleted after 14 days) |
 | Lock | `$APP_DIR/.lock` |
-| Настройки | `$APP_DIR/.env` (копия, chmod 600) |
-| Юниты | `/etc/systemd/system/gdrive-pull.{service,timer}` |
+| Settings | `$APP_DIR/.env` (copy, chmod 600) |
+| Units | `/etc/systemd/system/gdrive-pull.{service,timer}` |
 
-## Установка
+## Installation
 
 ```bash
 git clone https://github.com/AstEfTech/rclone-sync.git
 cd rclone-sync/gdrive
 cp .env.example .env
-$EDITOR .env       # заполнить RUN_USER, SRC_REMOTE, DST_DIR (внутри MOUNT_POINT), MOUNT_POINT, APP_DIR
-./deploy.sh        # от RUN_USER, не через sudo
+$EDITOR .env       # fill in RUN_USER, SRC_REMOTE, DST_DIR (inside MOUNT_POINT), MOUNT_POINT, APP_DIR
+./deploy.sh        # as RUN_USER, not via sudo
 ```
 
-`.env` обязателен: без него `deploy.sh` не запустится. Скрипт проверяет, что rclone установлен (если нет, спросит подтверждение и поставит его скриптом с rclone.org) и что remote из `SRC_REMOTE` настроен у `RUN_USER`; затем копирует файлы в `APP_DIR`, подставляет значения в шаблон юнита, делает `daemon-reload` и включает таймер. `.env` в git не попадает.
+`.env` is required: `deploy.sh` will not run without it. The script checks that rclone is installed (if not, it asks for confirmation and installs it via the script from rclone.org) and that the remote from `SRC_REMOTE` is configured for `RUN_USER`; then it copies the files to `APP_DIR`, substitutes values into the unit template, runs `daemon-reload` and enables the timer. `.env` is not tracked by git.
 
-Переводы строк: при установке `deploy.sh` убирает CR из `.env`, скриптов и юнитов, так что CRLF из Windows им не страшен. Исключение — сам `deploy.sh`: bash не запустит файл с CRLF. Если он приехал с CRLF, один раз выполните `sed -i 's/\r$//' deploy.sh`.
+Line endings: during installation `deploy.sh` strips CR from `.env`, scripts and units, so CRLF from Windows is not a problem. The exception is `deploy.sh` itself: bash will not run a file with CRLF. If it arrived with CRLF, run `sed -i 's/\r$//' deploy.sh` once.
 
-## Логика скрипта
+## Script logic
 
-1. `flock -n` на `.lock`: если прошлый прогон ещё идёт, выход с кодом 0.
-2. Проверка `mountpoint $MOUNT_POINT` и минимум 5 ГБ свободного места.
-3. `rclone copy $SRC_REMOTE $DST_DIR` с параметрами:
+1. `flock -n` on `.lock`: if the previous run is still going, exit with code 0.
+2. Check `mountpoint $MOUNT_POINT` and at least 5 GB of free space.
+3. `rclone copy $SRC_REMOTE $DST_DIR` with the options:
    `--transfers 4 --checkers 8 --drive-skip-gdocs --exclude ".Trash-*/**" --stats 30s --stats-file-name-length 0`,
-   лог пишется в `--log-file` в `log/`.
-4. `LOG_LEVEL=INFO` по умолчанию, переопределяется переменной окружения (`LOG_LEVEL=DEBUG` для отладки).
-5. Ненулевой код rclone логируется и возвращается наружу (юнит помечается как failed).
+   the log is written via `--log-file` into `log/`.
+4. `LOG_LEVEL=INFO` by default, overridable via an environment variable (`LOG_LEVEL=DEBUG` for debugging).
+5. A non-zero rclone exit code is logged and returned to the caller (the unit is marked as failed).
 
-## Управление
+## Operation
 
 ```bash
-# включить таймер
+# enable the timer
 sudo systemctl enable --now gdrive-pull.timer
 
-# ручной прогон (не блокирует терминал)
+# manual run (does not block the terminal)
 sudo systemctl start --no-block gdrive-pull.service
 
-# статус и журнал
+# status and journal
 systemctl list-timers | grep gdrive
 journalctl -u gdrive-pull -f
 
-# лог последнего прогона
-tail -f "$(ls -t $APP_DIR/log/*.log | head -1)"   # или $APP_DIR/watch-log.sh
+# latest run log
+tail -f "$(ls -t $APP_DIR/log/*.log | head -1)"   # or $APP_DIR/watch-log.sh
 
-# после правки unit-файлов (лучше править шаблон и перезапустить deploy.sh)
+# after editing unit files (better to edit the template and rerun deploy.sh)
 sudo systemctl daemon-reload
 ```
 
-## Поведение
+## Behavior
 
-- **Наложение прогонов.** systemd не запускает второй экземпляр oneshot-юнита, а `flock` страхует от ручных запусков. Пропущенные срабатывания в очередь не копятся.
-- **Обрыв.** Прерванный файл качается заново (rclone пишет во временный `.partial`), готовые файлы пропускаются.
+- **Overlapping runs.** systemd does not start a second instance of a oneshot unit, and `flock` guards against manual runs. Missed triggers do not pile up.
+- **Interruption.** An interrupted file is downloaded again (rclone writes to a temporary `.partial`); completed files are skipped.
 
-## Решённые проблемы
+## Solved problems
 
-| Симптом | Причина / решение |
+| Symptom | Cause / solution |
 |---|---|
-| `redirect_uri_mismatch` | OAuth client должен быть типа Desktop app |
-| Не публикуется в Production | Нужно заполнить Branding: имя, email, homepage, privacy policy |
-| `permission denied` на `mkdir` | Владелец `DST_DIR` должен быть `RUN_USER`; для NTFS/exFAT задать `uid`/`gid` в fstab |
-| `permission denied` на `/tmp/gdrive-pull.lock` | Lock перенесён в папку скрипта; запускать всегда от `RUN_USER`, не через `sudo` |
-| `systemctl start` блокирует терминал (oneshot) | Использовать `--no-block` или положиться на таймер |
+| `redirect_uri_mismatch` | The OAuth client must be of type Desktop app |
+| Cannot publish to Production | Fill in Branding: name, email, homepage, privacy policy |
+| `permission denied` on `mkdir` | `DST_DIR` must be owned by `RUN_USER`; for NTFS/exFAT set `uid`/`gid` in fstab |
+| `permission denied` on `/tmp/gdrive-pull.lock` | The lock was moved to the script directory; always run as `RUN_USER`, not via `sudo` |
+| `systemctl start` blocks the terminal (oneshot) | Use `--no-block` or rely on the timer |
 
-## Возможные доработки
+## Possible improvements
 
-- Уведомления о сбоях.
-- `--fast-list` при большом дереве.
-- `--update` или `--ignore-existing`, чтобы не перезаписывать локальные файлы.
+- Failure notifications.
+- `--fast-list` for large trees.
+- `--update` or `--ignore-existing` to avoid overwriting local files.
