@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Односторонняя копия Google Drive -> локальный диск (rclone copy, ничего не удаляется).
+# Запускать от пользователя RUN_USER из .env, не через sudo.
+# Отладка: LOG_LEVEL=DEBUG ./gdrive-pull.sh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Персональные настройки (SRC_REMOTE, DST_DIR, MOUNT_POINT) лежат в .env рядом со скриптом
+# shellcheck source=/dev/null
+if [ ! -f "$SCRIPT_DIR/.env" ]; then
+  echo "Missing $SCRIPT_DIR/.env: запускайте установленную копию (см. deploy.sh)" >&2
+  exit 1
+fi
+. "$SCRIPT_DIR/.env"
+SRC="${SRC_REMOTE:?SRC_REMOTE is not set in .env}"
+DST="${DST_DIR:?DST_DIR is not set in .env}"
+MOUNT="${MOUNT_POINT:?MOUNT_POINT is not set in .env}"
+
+MIN_FREE_GB=5
+KEEP_LOG_DAYS=14
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
+LOG_DIR="$SCRIPT_DIR/log"
+LOCK_FILE="$SCRIPT_DIR/.lock"
+
+# --- Блокировка: общая для таймера и ручных запусков
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Previous run still in progress, skip"
+  exit 0
+fi
+
+# --- Лог: имя = время старта прогона
+LOG="$LOG_DIR/$(date +%Y-%m-%d_%H-%M-%S).log"
+mkdir -p "$LOG_DIR"
+find "$LOG_DIR" -name '*.log' -mtime +"$KEEP_LOG_DAYS" -delete
+
+log() { echo "$(date '+%F %T') $*" | tee -a "$LOG" >&2; }
+
+# --- Проверки
+if ! mountpoint -q "$MOUNT"; then
+  log "ERROR: $MOUNT is not mounted, skip"
+  exit 1
+fi
+
+FREE_GB=$(df --output=avail -BG "$MOUNT" | tail -1 | tr -dc '0-9')
+if [ "$FREE_GB" -lt "$MIN_FREE_GB" ]; then
+  log "ERROR: only ${FREE_GB}G free on $MOUNT, skip"
+  exit 1
+fi
+
+# --- Синк
+log "START copy $SRC -> $DST"
+rc=0
+rclone copy "$SRC" "$DST" \
+  --transfers 4 --checkers 8 \
+  --drive-skip-gdocs \
+  --exclude ".Trash-*/**" \
+  --stats 30s --stats-file-name-length 0 \
+  --log-file "$LOG" --log-level "$LOG_LEVEL" || rc=$?
+
+if [ "$rc" -ne 0 ]; then
+  log "ERROR: rclone exited with code $rc"
+  exit "$rc"
+fi
+log "DONE"

@@ -1,0 +1,14 @@
+[Unit]
+Description=Copy Google Drive Media/ to local HDD
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=@MOUNT_POINT@
+
+[Service]
+Type=oneshot
+User=@RUN_USER@
+Group=@RUN_USER@
+WorkingDirectory=@APP_DIR@
+ExecStart=@APP_DIR@/gdrive-pull.sh
+Nice=10
+IOSchedulingClass=idle
