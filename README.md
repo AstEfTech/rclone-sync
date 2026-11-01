@@ -1,5 +1,7 @@
 # rclone-sync: cloud storage → local disk
 
+Setting up RClone for local storage might be a real pain, so i decided to automate this process and make it more accessible.
+
 Sync between a cloud storage (Google Drive, Google Photos, iCloud Drive, OneDrive, Dropbox, Box, or object storage: S3, B2, GCS, Azure Blob, Wasabi) and a local disk on a local server, every 15 minutes by default. Each provider is configured as a list of folder pairs (source → destination), each with its own sync type; schedule, pairs and user are set in the shared `config.yml`.
 The default sync type is `copy`, which never deletes anything; `sync` and `move` are opt-in per pair (see [Folder pairs and sync types](#folder-pairs-and-sync-types)).
 
