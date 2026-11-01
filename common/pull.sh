@@ -23,8 +23,9 @@ SRC="${SRC_REMOTE:?SRC_REMOTE is not set in .env}"
 DST="${DST_DIR:?DST_DIR is not set in .env}"
 MOUNT="${MOUNT_POINT:-}"   # optional: empty = no separate mounted disk
 
-MIN_FREE_GB=5
-KEEP_LOG_DAYS=14
+# Optional, from config.yml via .env; defaults when unset
+MIN_FREE_GB="${MIN_FREE_GB:-5}"
+KEEP_LOG_DAYS="${KEEP_LOG_DAYS:-14}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 LOG_DIR="$SCRIPT_DIR/log"

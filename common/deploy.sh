@@ -35,6 +35,9 @@ APP_DIR="$(cfg app_dir)"
 # systemd OnCalendar expression; optional, every 15 minutes by default
 SCHEDULE="$(cfg schedule)"
 SCHEDULE="${SCHEDULE:-*:0/15}"
+# Optional pull.sh limits; when unset, the defaults in pull.sh apply
+MIN_FREE_GB="$(cfg min_free_gb)"
+KEEP_LOG_DAYS="$(cfg keep_log_days)"
 SRC_REMOTE="$(cfg_get "providers.$NAME.src_remote")"
 DST_DIR="$(cfg_get "providers.$NAME.dst_dir")"
 
@@ -44,6 +47,13 @@ for pair in "RUN_USER:common.run_user" "APP_DIR:common.app_dir" \
   var="${pair%%:*}"
   if [ -z "${!var}" ]; then
     echo "${pair#*:} is not set in config.yml" >&2
+    exit 1
+  fi
+done
+
+for pair in "min_free_gb:$MIN_FREE_GB" "keep_log_days:$KEEP_LOG_DAYS"; do
+  if [ -n "${pair#*:}" ] && [[ ! "${pair#*:}" =~ ^[0-9]+$ ]]; then
+    echo "${pair%%:*} must be a whole number, got '${pair#*:}'" >&2
     exit 1
   fi
 done
@@ -133,6 +143,8 @@ strip_cr "$COMMON/pull.service.in" "$TMP_DIR/pull.service.in"
 
 # The installed .env holds only this provider's resolved settings
 printf 'SRC_REMOTE=%q\nDST_DIR=%q\nMOUNT_POINT=%q\n' "$SRC_REMOTE" "$DST_DIR" "$MOUNT_POINT" > "$TMP_DIR/app.env"
+[ -z "$MIN_FREE_GB" ] || printf 'MIN_FREE_GB=%q\n' "$MIN_FREE_GB" >> "$TMP_DIR/app.env"
+[ -z "$KEEP_LOG_DAYS" ] || printf 'KEEP_LOG_DAYS=%q\n' "$KEEP_LOG_DAYS" >> "$TMP_DIR/app.env"
 
 install -m 755 "$TMP_DIR/pull.sh" "$INSTALL_DIR/$NAME-pull.sh"
 install -m 755 "$TMP_DIR/watch-log.sh" "$INSTALL_DIR/watch-log.sh"

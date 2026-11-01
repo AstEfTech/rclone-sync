@@ -14,11 +14,16 @@ common:
   # Optional: mount point of a separate disk. If set, dst_dir must be inside it and
   # each run is skipped while it is not mounted. Leave out (or empty) for a plain directory.
   mount_point: /mnt/storage
-
+  # Optional: a run is skipped when less than this many GB are free. Default: 5.
+  min_free_gb: 5
+  
   # Optional: when to run, a systemd OnCalendar expression (check with
   # `systemd-analyze calendar "<expr>"`). Default: every 15 minutes.
   # Keep the quotes: a bare * is not valid YAML.
   schedule: "*:0/15"
+
+  # Optional: logs older than this many days are deleted. Default: 14.
+  keep_log_days: 14
 
   # Where deploy.sh installs the providers: <app_dir>/<provider>-pull/
   # holds the script, a generated .env, .lock and log/
@@ -45,6 +50,8 @@ providers:
 
     # Optional overrides of the common block, for this provider only:
     # schedule: "hourly"
+    # min_free_gb: 10
+    # keep_log_days: 30
     # run_user: other_user
     # mount_point: /mnt/other
     # app_dir: /home/other_user
