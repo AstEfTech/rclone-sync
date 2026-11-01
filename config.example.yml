@@ -1,7 +1,7 @@
 # Copy to config.yml in the repository root, fill it in, and only then run
-# <provider>/deploy.sh:
+# deploy.sh:
 #   cp config.example.yml config.yml
-# Each deploy.sh reads the `common` block and its own block under `providers`,
+# Each provider is deployed from the `common` block and its own block under `providers`,
 # so the settings of providers you do not use can stay as they are.
 # Nothing secret lives here: credentials stay in rclone.conf of the run user.
 # Indent with 2 spaces (no tabs); lists and multi-line values are not supported.
@@ -30,7 +30,7 @@ common:
   app_dir: /home/rclone_user
 
 providers:
-  # Google Drive (gdrive/deploy.sh)
+  # Google Drive (./deploy.sh gdrive)
   gdrive:
     # Source: remote from rclone.conf and a folder on it
     src_remote: gdrive:SomeDir
@@ -38,7 +38,7 @@ providers:
     # Destination on the local disk (inside mount_point)
     dst_dir: /mnt/storage/gdrive
 
-  # iCloud Drive (icloud/deploy.sh)
+  # iCloud Drive (./deploy.sh icloud)
   icloud:
     # Source: remote from rclone.conf and a folder on it
     # (for iCloud Photos use a remote created with service=photos,

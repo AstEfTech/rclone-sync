@@ -19,20 +19,17 @@ Getting the OAuth client ID and token and setting up the `gdrive` remote: [gdriv
 
 ```
 config.example.yml               # template of the shared settings (copy to config.yml)
-deploy.sh                        # deploys every provider that has a block in config.yml
+deploy.sh                        # deploys one provider or all that have a block in config.yml
+undeploy.sh                      # asks which provider to remove, removes its units and installed directory
 common/                          # shared by all providers
 ├── config.sh                    # minimal config.yml reader (no yq needed)
-├── deploy.sh                    # installs the script and units (called from <provider>/deploy.sh)
-├── undeploy.sh                  # removes the units and the installed directory (called from <provider>/undeploy.sh)
 ├── pull.sh                      # main script, installed as <NAME>-pull.sh
 ├── watch-log.sh                 # tail -f of the latest log
 ├── pull.service.in              # unit template: oneshot, Nice=10, IOSchedulingClass=idle
 └── pull.timer.in                # OnCalendar=@SCHEDULE@ (config.yml, default *:0/15), Persistent=true, RandomizedDelaySec=30
 gdrive/
 ├── provider.conf                # provider differences: name, rclone options, minimum rclone version
-├── CONNECTION_README.md         # getting Google credentials and configuring rclone
-├── deploy.sh                    # thin wrapper around common/deploy.sh
-└── undeploy.sh                  # thin wrapper around common/undeploy.sh
+└── CONNECTION_README.md         # getting Google credentials and configuring rclone
 ```
 
 Layout on the server (`app_dir` from `config.yml`; each provider gets its own `$APP_DIR/<NAME>-pull/`):
@@ -53,23 +50,22 @@ git clone https://github.com/AstEfTech/rclone-sync.git
 cd rclone-sync
 cp config.example.yml config.yml
 $EDITOR config.yml  # common block and the block of the provider you install
-cd gdrive
-./deploy.sh        # as run_user, not via sudo
+./deploy.sh gdrive    # as run_user, not via sudo
 ```
 
-One `config.yml` in the repository root serves all providers: the `common` block (`run_user`, `app_dir` and the optional `mount_point`) holds the defaults, and `providers.<name>` holds `src_remote` and `dst_dir` for each provider (if `mount_point` is set, `dst_dir` must be inside it). Any `common` key can be overridden in a provider block (for example another `run_user` or `mount_point` for one provider). Each `deploy.sh` reads only `common` and its own block, so you can leave the settings of providers you do not use as they are. Two providers cannot share a `dst_dir` (or nest one inside the other): `deploy.sh` refuses.
+One `config.yml` in the repository root serves all providers: the `common` block (`run_user`, `app_dir` and the optional `mount_point`) holds the defaults, and `providers.<name>` holds `src_remote` and `dst_dir` for each provider (if `mount_point` is set, `dst_dir` must be inside it). Any `common` key can be overridden in a provider block (for example another `run_user` or `mount_point` for one provider). Each provider is deployed from `common` and its own block only, so you can leave the settings of providers you do not use as they are. Two providers cannot share a `dst_dir` (or nest one inside the other): `deploy.sh` refuses.
 
-After editing `config.yml`, run `./deploy.sh` in the repository root: it redeploys every provider that has a block under `providers` (skips the others, reports failures at the end). `<provider>/deploy.sh` deploys just one.
+After editing `config.yml`, run `./deploy.sh` in the repository root: it redeploys every provider that has a block under `providers` (skips the others, reports failures at the end). `./deploy.sh <provider>` deploys just one; without arguments on a terminal it offers a list.
 
 `config.yml` is required: `deploy.sh` will not run without it. It holds no secrets (credentials stay in the `rclone.conf` of `run_user`). The file is read by a small built-in parser, so no `yq` is needed; the supported subset is nested mappings indented with 2 spaces and `key: value` scalars (quotes and `# comments` are fine; lists and multi-line values are not). The script checks that rclone is installed (if not, it asks for confirmation and installs it via the script from rclone.org) and that the remote from `src_remote` is configured for `run_user`; then it copies the files to `$APP_DIR/<NAME>-pull/`, generates the provider's `.env` there, substitutes values into the unit template, runs `daemon-reload` and restarts the timer. `config.yml` is not tracked by git. Redeploying is safe: it takes the same lock as the sync, so it refuses to run while a sync is in progress.
 
-Line endings: during installation `deploy.sh` strips CR from `config.yml`, `provider.conf`, scripts and units, so CRLF from Windows is not a problem. The exception is the `deploy.sh` files themselves: bash will not run a file with CRLF. If they arrived with CRLF, run `sed -i 's/\r$//' *.sh */*.sh` once in the repository root.
+Line endings: during installation `deploy.sh` strips CR from `config.yml`, `provider.conf`, scripts and units, so CRLF from Windows is not a problem. The exception is the root `deploy.sh` and `undeploy.sh`: bash will not run a file with CRLF. If they arrived with CRLF, run `sed -i 's/\r$//' *.sh common/*.sh` once in the repository root.
 
 ## Removal
 
 ```bash
-cd gdrive
-./undeploy.sh      # as run_user, asks for confirmation; -y skips it
+./undeploy.sh            # as run_user: pick the provider from the list, then confirm
+./undeploy.sh gdrive -y  # provider named explicitly; -y skips the confirmation
 ```
 
 Stops and removes `<NAME>-pull.timer` / `.service` and deletes `$APP_DIR/<NAME>-pull/` (script, settings, logs). Files already copied to `dst_dir`, the rclone remote and `config.yml` are kept. If a sync is running, it is stopped; a run started by hand blocks the removal until it finishes.
@@ -137,16 +133,14 @@ Differences from Google Drive:
 ```
 icloud/
 ├── provider.conf                # NAME=icloud, --transfers 2 --checkers 4, rclone >= 1.69
-├── CONNECTION_README.md         # logging in to iCloud and configuring rclone
-├── deploy.sh                    # thin wrapper around common/deploy.sh
-└── undeploy.sh                  # thin wrapper around common/undeploy.sh
+└── CONNECTION_README.md         # logging in to iCloud and configuring rclone
 ```
 
-Everything else (script, units, `deploy.sh` logic, `watch-log.sh`, `config.yml` handling) is shared in `common/` and the root `config.yml`; the provider only supplies `provider.conf`. A new provider is a new folder with `provider.conf`, `deploy.sh` and `undeploy.sh` (copy the thin wrappers), plus its block under `providers` in `config.example.yml`. Installation, operation and script logic are the same as above, with `icloud` instead of `gdrive` in all names:
+Everything else (script, units, `deploy.sh` logic, `watch-log.sh`, `config.yml` handling) is shared in `common/` and the root `config.yml`; the provider only supplies `provider.conf`. A new provider is a new folder with `provider.conf` (the root `deploy.sh` and `undeploy.sh` find providers by it), plus its block under `providers` in `config.example.yml`. Installation, operation and script logic are the same as above, with `icloud` instead of `gdrive` in all names:
 
 ```bash
-cd rclone-sync/icloud                         # the shared config.yml is already filled in
-./deploy.sh                                   # as run_user, not via sudo
+cd rclone-sync                                # the shared config.yml is already filled in
+./deploy.sh icloud                            # as run_user, not via sudo
 journalctl -u icloud-pull -f
 sudo systemctl start --no-block icloud-pull.service
 ```
