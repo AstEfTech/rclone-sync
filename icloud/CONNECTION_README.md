@@ -64,7 +64,7 @@ rclone lsd icloudphotos:PrimarySync/              # albums
 rclone ls  "icloudphotos:PrimarySync/Favorites/"  # photos in an album
 ```
 
-To sync photos, set `ICLOUD_SRC_REMOTE=icloudphotos:PrimarySync/Favorites` (or another album) in `.env`. The first listing of a very large album can take several minutes; later ones use a local cache in `~/.cache/rclone/iclouddrive-photos/`.
+To sync photos, set `src_remote: icloudphotos:PrimarySync/Favorites` (or another album) under `providers.icloud` in `config.yml`. The first listing of a very large album can take several minutes; later ones use a local cache in `~/.cache/rclone/iclouddrive-photos/`.
 
 ## Reauthentication (token expired, password changed)
 
@@ -86,5 +86,5 @@ ADP is supported. Make sure **Access iCloud Data on the Web** is ON on the iPhon
 | `Missing PCS cookies from the request` or `requestPCS:` | The ADP approval did not complete. Enable **Access iCloud Data on the Web**, approve the prompt on the trusted device and run `rclone config reconnect icloud:`. |
 | Still fails after that | Stale auth state. Clear the `cookies` and `trust_token` fields in the config, or delete and recreate the remote. |
 | Authentication errors about a month after setup | The 30-day trust token expired. Run `rclone config reconnect icloud:`. |
-| `didn't find section in config file` / remote not found | The remote was configured under another user. Configure it as `RUN_USER`. |
+| `didn't find section in config file` / remote not found | The remote was configured under another user. Configure it as `run_user`. |
 | `unknown backend type "iclouddrive"` | rclone is older than 1.69. Update it via the script from rclone.org. |

@@ -11,18 +11,12 @@ COMMON="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 HERE="$(cd "${1:?Usage: undeploy.sh <provider dir> [-y]}" && pwd)"
 ASSUME_YES=0
 [ "${2:-}" = "-y" ] && ASSUME_YES=1
-CONFIG_FILE="$COMMON/../config.yml"
-
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "Missing $(cd "$COMMON/.." && pwd)/config.yml: it tells where the provider is installed" >&2
-  exit 1
-fi
 
 # shellcheck source=config.sh
 . "$COMMON/config.sh"
-cfg_load "$CONFIG_FILE"
+cfg_load "$COMMON/../config.yml"   # tells where the provider is installed
 
-NAME="$(sed 's/\r$//' "$HERE/provider.conf" | ( . /dev/stdin; echo "${NAME:-}" ))"
+NAME="$(provider_name "$HERE")"
 if [ -z "$NAME" ]; then
   echo "NAME is not set in $HERE/provider.conf" >&2
   exit 1

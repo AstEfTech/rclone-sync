@@ -1,8 +1,8 @@
 [Unit]
-Description=Run @NAME@-pull every 15 minutes
+Description=Run @NAME@-pull on schedule @SCHEDULE@
 
 [Timer]
-OnCalendar=*:0/15
+OnCalendar=@SCHEDULE@
 Persistent=true
 RandomizedDelaySec=30
 Unit=@NAME@-pull.service
