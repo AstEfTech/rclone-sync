@@ -2,7 +2,8 @@
 # One-way transfer remote -> local disk for each configured folder pair, with the rclone
 # command chosen per pair: copy (default, deletes nothing), sync (mirror, deletes extra
 # files at the destination), move (deletes source files after transfer) or twoway
-# (copy in both directions, deletes nothing).
+# (copy in both directions, deletes nothing). Also the other two-path rclone commands:
+# copyto, moveto and bisync (two-way, propagates deletions).
 # Installed by deploy.sh as <NAME>-pull.sh next to provider.conf and a generated .env.
 # Run as run_user, not via sudo.
 # Debug: LOG_LEVEL=DEBUG ./<NAME>-pull.sh
@@ -84,6 +85,16 @@ for i in "${!PAIR_NAMES[@]}"; do
     # sides have it, so an old copy never overwrites a fresher one
     run_rclone copy "$SRC" "$DST" --update || prc=$?
     [ "$prc" -ne 0 ] || run_rclone copy "$DST" "$SRC" --update || prc=$?
+  elif [ "$MODE" = bisync ]; then
+    # The first run has no saved state and needs --resync (merges both sides, deletes nothing);
+    # the marker is written only after it succeeds
+    MARK="$SCRIPT_DIR/.bisync-$name"
+    if [ -f "$MARK" ]; then
+      run_rclone bisync "$SRC" "$DST" || prc=$?
+    else
+      run_rclone bisync "$SRC" "$DST" --resync || prc=$?
+      [ "$prc" -ne 0 ] || touch "$MARK"
+    fi
   else
     run_rclone "$MODE" "$SRC" "$DST" || prc=$?
   fi

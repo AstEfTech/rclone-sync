@@ -18,7 +18,7 @@ common:
   # Optional: a pair is skipped when less than this many GB are free. Default: 5.
   min_free_gb: 5
 
-  # Optional: default sync type of the pairs (copy | sync | move | twoway), see `providers` below.
+  # Optional: default sync type of the pairs (copy | sync | move | copyto | moveto | bisync | twoway), see `providers` below.
   # Can be overridden per provider and per pair. Default: copy.
   mode: copy
 
@@ -45,6 +45,10 @@ providers:
   #   copy  copy new and changed files, never delete anything (safe default)
   #   sync  make dst an exact mirror of src: files missing in src are DELETED from dst
   #   move  copy, then delete the files from src (the source gets emptied!)
+  #   copyto  like copy, but src and dst may be single files (dst is the target file name)
+  #   moveto  like move, but src and dst may be single files (renames on the way)
+  #   bisync  real two-way sync (rclone bisync): changes AND deletions go both ways;
+  #         the first run does --resync (merges both sides without deleting)
   #   twoway  copy in both directions, nothing is deleted: a file added to src goes to
   #         dst and a file added to dst goes to src; if both have it, the newer one wins
   # Destinations of different pairs must not overlap (the same dir or one inside another).
@@ -64,6 +68,38 @@ providers:
         src: gdrive:Shared
         dst: /mnt/storage/gdrive/shared
         mode: twoway
+
+  # Microsoft OneDrive / SharePoint (./deploy.sh onedrive)
+  onedrive:
+    pairs:
+      documents:
+        src: onedrive:Documents
+        dst: /mnt/storage/onedrive/documents
+        mode: copy
+
+  # Dropbox (./deploy.sh dropbox)
+  dropbox:
+    pairs:
+      files:
+        src: dropbox:Files
+        dst: /mnt/storage/dropbox/files
+        mode: twoway   # new files on either side appear on the other, nothing is deleted
+
+  # Box (./deploy.sh box)
+  box:
+    pairs:
+      work:
+        src: box:Work
+        dst: /mnt/storage/box/work
+        mode: copy
+
+  # Google Photos (./deploy.sh gphotos), download only: use copy
+  gphotos:
+    pairs:
+      photos:
+        src: gphotos:media/by-month
+        dst: /mnt/storage/gphotos/photos
+        mode: copy
 
   # iCloud Drive (./deploy.sh icloud)
   icloud:

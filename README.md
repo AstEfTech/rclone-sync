@@ -1,6 +1,6 @@
-# rclone-sync: Google Drive / iCloud Drive → local disk
+# rclone-sync: cloud storage → local disk
 
-One-way sync from Google Drive or iCloud Drive to a local disk on a local server, every 15 minutes by default. Each provider is configured as a list of folder pairs (source → destination), each with its own sync type; schedule, pairs and user are set in the shared `config.yml`.
+Sync between a cloud storage (Google Drive, Google Photos, iCloud Drive, OneDrive, Dropbox, Box) and a local disk on a local server, every 15 minutes by default. Each provider is configured as a list of folder pairs (source → destination), each with its own sync type; schedule, pairs and user are set in the shared `config.yml`.
 The default sync type is `copy`, which never deletes anything; `sync` and `move` are opt-in per pair (see [Folder pairs and sync types](#folder-pairs-and-sync-types)).
 
 ## Environment
@@ -27,9 +27,9 @@ common/                          # shared by all providers
 ├── watch-log.sh                 # tail -f of the latest log
 ├── pull.service.in              # unit template: oneshot, Nice=10, IOSchedulingClass=idle
 └── pull.timer.in                # OnCalendar=@SCHEDULE@ (config.yml, default *:0/15), Persistent=true, RandomizedDelaySec=30
-gdrive/
+<provider>/                      # gdrive, icloud, onedrive, dropbox, box, gphotos
 ├── provider.conf                # provider differences: name, rclone options, minimum rclone version
-└── CONNECTION_README.md         # getting Google credentials and configuring rclone
+└── CONNECTION_README.md         # getting credentials and configuring the rclone remote
 ```
 
 Layout on the server (`app_dir` from `config.yml`; each provider gets its own `$APP_DIR/<NAME>-pull/`):
@@ -79,14 +79,19 @@ providers:
         mode: sync
 ```
 
-| `mode` | rclone command | Effect |
-|---|---|---|
-| `copy` (default) | `rclone copy` | New and changed files are copied; nothing is ever deleted |
-| `sync` | `rclone sync` | `dst` becomes an exact mirror of `src`: files missing in `src` are **deleted** from `dst` |
-| `move` | `rclone move` | Files are copied, then **deleted from `src`** (the source gets emptied) |
-| `twoway` | `rclone copy` both ways, with `--update` | A file added to `src` goes to `dst` and a file added to `dst` goes to `src`; nothing is deleted. If both sides have the file, the newer one (by modification time) wins. A file deleted on one side comes back from the other. Not for read-only remotes such as iCloud Photos |
+| `mode` | Safe | rclone command | Effect |
+|---|---|---|---|
+| `copy` (default) | ✅ safe: never deletes, only adds and updates files in `dst` | `rclone copy` | New and changed files are copied; nothing is ever deleted |
+| `copyto` | ✅ safe: never deletes, only adds and updates the target | `rclone copyto` | Like `copy`, but `src` and `dst` may be single files (`dst` is then the target file name) |
+| `twoway` | ✅ safe: both directions are plain copies, nothing is deleted | `rclone copy` both ways, with `--update` | A file added to `src` goes to `dst` and a file added to `dst` goes to `src`; nothing is deleted. If both sides have the file, the newer one (by modification time) wins. A file deleted on one side comes back from the other. Not for read-only remotes such as iCloud Photos |
+| `bisync` | ⚠️ not safe: a deletion on either side is replicated to the other | `rclone bisync` | Real two-way sync: changes **and deletions** propagate both ways. The first run uses `--resync` (merges both sides, deletes nothing); its state is marked by `.bisync-<pair>` in the install directory. Needs rclone 1.58+; if bisync reports an error, a manual `--resync` may be needed |
+| `move` | ⚠️ not safe: removes the files from `src` after transfer | `rclone move` | Files are copied, then **deleted from `src`** (the source gets emptied) |
+| `moveto` | ⚠️ not safe: removes the files from `src` after transfer | `rclone moveto` | Like `move`, but `src` and `dst` may be single files; **deletes from `src`** |
+| `sync` | ⚠️ not safe: deletes from `dst` what is missing in `src` | `rclone sync` | `dst` becomes an exact mirror of `src`: files missing in `src` are **deleted** from `dst` |
 
-`mode` is resolved per pair: the pair's own value, else the provider block, else `common`, else `copy`. Pairs of one provider run one after another within a single timer run and share its schedule, lock and log. Pair names may use letters, digits, `-` and `_`. Use `sync` and `move` only when you are sure: they delete data (`rclone sync --dry-run` is a good first check by hand).
+**Safe** = the mode never deletes anything (`copy`, `copyto`, `twoway`). Safe modes can still overwrite a file that changed, but no file disappears. The reason is given in the Safe column of each row.
+
+`mode` is resolved per pair: the pair's own value, else the provider block, else `common`, else `copy`. Pairs of one provider run one after another within a single timer run and share its schedule, lock and log. Pair names may use letters, digits, `-` and `_`. Use `sync`, `move`, `moveto` and `bisync` only when you are sure: they delete data (`rclone sync --dry-run` is a good first check by hand).
 
 ## Removal
 
@@ -178,6 +183,30 @@ sudo systemctl start --no-block icloud-pull.service
 | Login fails with a correct password | An app-specific password was used; only the regular Apple ID password works |
 | `Missing PCS cookies from the request` | With Advanced Data Protection enable "Access iCloud Data on the Web" on the iPhone and approve the prompt on the trusted device |
 | `unknown backend type "iclouddrive"` | rclone is older than 1.69; update it via the script from rclone.org |
+
+## Other providers
+
+OneDrive, Dropbox, Box and Google Photos are set up the same way as Google Drive: a `providers.<name>` block in `config.yml`, a remote in the `rclone.conf` of `run_user` ([connection guide](#connection-guides) below), then `./deploy.sh <name>`. Units and directories are named `<name>-pull`.
+
+| Provider | Name | Example `src` | rclone backend | Notes |
+|---|---|---|---|---|
+| Google Drive | `gdrive` | `gdrive:Media` | `drive` | Shared Drives supported |
+| Google Photos | `gphotos` | `gphotos:media/by-month` | `google photos` | Download only (use `copy`); the API only exposes app-uploaded media since 2025 |
+| iCloud Drive | `icloud` | `icloud:SomeDir` | `iclouddrive` | Experimental, trust token lasts 30 days |
+| Microsoft OneDrive | `onedrive` | `onedrive:Documents` | `onedrive` | Personal, Business and SharePoint Online |
+| Dropbox | `dropbox` | `dropbox:Files` | `dropbox` | Personal and Business |
+| Box | `box` | `box:Work` | `box` | Personal and enterprise |
+
+### Connection guides
+
+- Google Drive: [gdrive/CONNECTION_README.md](gdrive/CONNECTION_README.md)
+- Google Photos: [gphotos/CONNECTION_README.md](gphotos/CONNECTION_README.md)
+- iCloud Drive: [icloud/CONNECTION_README.md](icloud/CONNECTION_README.md)
+- OneDrive: [onedrive/CONNECTION_README.md](onedrive/CONNECTION_README.md)
+- Dropbox: [dropbox/CONNECTION_README.md](dropbox/CONNECTION_README.md)
+- Box: [box/CONNECTION_README.md](box/CONNECTION_README.md)
+
+Write-capable modes (`twoway`, `bisync`, `move`, `moveto`) need a remote you can write to. A new provider is a new folder with `provider.conf`; `deploy.sh` and `undeploy.sh` find providers by it.
 
 ## Possible improvements
 
