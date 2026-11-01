@@ -1,6 +1,6 @@
 # rclone-sync: cloud storage → local disk
 
-Sync between a cloud storage (Google Drive, Google Photos, iCloud Drive, OneDrive, Dropbox, Box) and a local disk on a local server, every 15 minutes by default. Each provider is configured as a list of folder pairs (source → destination), each with its own sync type; schedule, pairs and user are set in the shared `config.yml`.
+Sync between a cloud storage (Google Drive, Google Photos, iCloud Drive, OneDrive, Dropbox, Box, or object storage: S3, B2, GCS, Azure Blob, Wasabi) and a local disk on a local server, every 15 minutes by default. Each provider is configured as a list of folder pairs (source → destination), each with its own sync type; schedule, pairs and user are set in the shared `config.yml`.
 The default sync type is `copy`, which never deletes anything; `sync` and `move` are opt-in per pair (see [Folder pairs and sync types](#folder-pairs-and-sync-types)).
 
 ## Environment
@@ -27,7 +27,7 @@ common/                          # shared by all providers
 ├── watch-log.sh                 # tail -f of the latest log
 ├── pull.service.in              # unit template: oneshot, Nice=10, IOSchedulingClass=idle
 └── pull.timer.in                # OnCalendar=@SCHEDULE@ (config.yml, default *:0/15), Persistent=true, RandomizedDelaySec=30
-<provider>/                      # gdrive, icloud, onedrive, dropbox, box, gphotos
+<provider>/                      # gdrive, gphotos, icloud, onedrive, dropbox, box, s3, b2, gcs, azureblob, wasabi
 ├── provider.conf                # provider differences: name, rclone options, minimum rclone version
 └── CONNECTION_README.md         # getting credentials and configuring the rclone remote
 ```
@@ -186,7 +186,7 @@ sudo systemctl start --no-block icloud-pull.service
 
 ## Other providers
 
-OneDrive, Dropbox, Box and Google Photos are set up the same way as Google Drive: a `providers.<name>` block in `config.yml`, a remote in the `rclone.conf` of `run_user` ([connection guide](#connection-guides) below), then `./deploy.sh <name>`. Units and directories are named `<name>-pull`.
+OneDrive, Dropbox, Box, Google Photos and the object storages (S3, B2, GCS, Azure Blob, Wasabi) are set up the same way as Google Drive: a `providers.<name>` block in `config.yml`, a remote in the `rclone.conf` of `run_user` ([connection guide](#connection-guides) below), then `./deploy.sh <name>`. Units and directories are named `<name>-pull`.
 
 | Provider | Name | Example `src` | rclone backend | Notes |
 |---|---|---|---|---|
@@ -196,6 +196,11 @@ OneDrive, Dropbox, Box and Google Photos are set up the same way as Google Drive
 | Microsoft OneDrive | `onedrive` | `onedrive:Documents` | `onedrive` | Personal, Business and SharePoint Online |
 | Dropbox | `dropbox` | `dropbox:Files` | `dropbox` | Personal and Business |
 | Box | `box` | `box:Work` | `box` | Personal and enterprise |
+| Amazon S3 | `s3` | `s3:my-bucket/backups` | `s3` | AWS and any S3-compatible service (MinIO, R2, Spaces, ...) |
+| Backblaze B2 | `b2` | `b2:my-bucket/backups` | `b2` | Application key; old versions stay as hidden versions |
+| Google Cloud Storage | `gcs` | `gcs:my-bucket/backups` | `google cloud storage` | Service account JSON key |
+| Azure Blob Storage | `azureblob` | `azureblob:my-container/backups` | `azureblob` | Account key or SAS URL |
+| Wasabi | `wasabi` | `wasabi:my-bucket/backups` | `s3` (provider Wasabi) | Billed minimum retention for deleted objects |
 
 ### Connection guides
 
@@ -205,8 +210,13 @@ OneDrive, Dropbox, Box and Google Photos are set up the same way as Google Drive
 - OneDrive: [onedrive/CONNECTION_README.md](onedrive/CONNECTION_README.md)
 - Dropbox: [dropbox/CONNECTION_README.md](dropbox/CONNECTION_README.md)
 - Box: [box/CONNECTION_README.md](box/CONNECTION_README.md)
+- Amazon S3: [s3/CONNECTION_README.md](s3/CONNECTION_README.md)
+- Backblaze B2: [b2/CONNECTION_README.md](b2/CONNECTION_README.md)
+- Google Cloud Storage: [gcs/CONNECTION_README.md](gcs/CONNECTION_README.md)
+- Azure Blob Storage: [azureblob/CONNECTION_README.md](azureblob/CONNECTION_README.md)
+- Wasabi: [wasabi/CONNECTION_README.md](wasabi/CONNECTION_README.md)
 
-Write-capable modes (`twoway`, `bisync`, `move`, `moveto`) need a remote you can write to. A new provider is a new folder with `provider.conf`; `deploy.sh` and `undeploy.sh` find providers by it.
+Write-capable modes (`twoway`, `bisync`, `move`, `moveto`) need a remote you can write to.  Object storages have no OAuth step: access keys (or a service account key / SAS URL) go straight into `rclone config`; use a dedicated low-privilege user and grant delete rights only if you use a deleting mode. A new provider is a new folder with `provider.conf`; `deploy.sh` and `undeploy.sh` find providers by it.
 
 ## Possible improvements
 

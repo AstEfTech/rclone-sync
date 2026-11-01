@@ -101,6 +101,49 @@ providers:
         dst: /mnt/storage/gphotos/photos
         mode: copy
 
+  # Object storage: src is <remote>:<bucket or container>/<path>.
+  # All modes work, but remember the bucket may bill deleted/overwritten objects.
+
+  # Amazon S3 and S3-compatible services (./deploy.sh s3)
+  s3:
+    pairs:
+      backups:
+        src: s3:my-bucket/backups
+        dst: /mnt/storage/s3/backups
+        mode: copy
+
+  # Backblaze B2 (./deploy.sh b2)
+  b2:
+    pairs:
+      backups:
+        src: b2:my-bucket/backups
+        dst: /mnt/storage/b2/backups
+        mode: copy
+
+  # Google Cloud Storage (./deploy.sh gcs)
+  gcs:
+    pairs:
+      backups:
+        src: gcs:my-bucket/backups
+        dst: /mnt/storage/gcs/backups
+        mode: copy
+
+  # Microsoft Azure Blob Storage (./deploy.sh azureblob)
+  azureblob:
+    pairs:
+      backups:
+        src: azureblob:my-container/backups
+        dst: /mnt/storage/azureblob/backups
+        mode: copy
+
+  # Wasabi (./deploy.sh wasabi)
+  wasabi:
+    pairs:
+      backups:
+        src: wasabi:my-bucket/backups
+        dst: /mnt/storage/wasabi/backups
+        mode: copy
+
   # iCloud Drive (./deploy.sh icloud)
   icloud:
     pairs:

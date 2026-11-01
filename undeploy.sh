@@ -2,7 +2,7 @@
 # Removes the integration of one provider installed by deploy.sh: lists the providers,
 # asks which one to remove, stops and removes the systemd timer and service, deletes
 # $app_dir/<NAME>-pull/ (script, settings, logs).
-# NOT touched: files already copied to dst_dir, the rclone remote and rclone.conf,
+# NOT touched: files already copied to the pair destinations, the rclone remote and rclone.conf,
 # config.yml, rclone itself.
 # Usage: ./undeploy.sh [provider] [-y]   (no provider: choose from the list; -y skips the confirmation)
 # Run as run_user (sudo is invoked internally).
