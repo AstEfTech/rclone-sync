@@ -1,13 +1,11 @@
 # Getting Google credentials and a token for rclone (Google Drive)
 
-[Русская версия](CONNECTION_README_RU.md)
-
-Instructions for a headless machine (a Raspberry Pi without a browser). It uses your own OAuth client ID rather than rclone's shared key: there are no hard rate limits and the token does not expire after 7 days.
+Instructions for a headless local server (no browser). It uses your own OAuth client ID rather than rclone's shared key: there are no hard rate limits and the token does not expire after 7 days.
 
 ## Requirements
 
 - A Google account (regular Gmail or Workspace).
-- rclone on the Pi **and** on a computer with a browser. The computer's version should be the same or newer. Install via the script from rclone.org, not from `apt`:
+- rclone on the server **and** on a computer with a browser. The computer's version should be the same or newer. Install via the script from rclone.org, not from `apt`:
   ```bash
   curl https://rclone.org/install.sh | sudo bash
   rclone version
@@ -17,13 +15,13 @@ Instructions for a headless machine (a Raspberry Pi without a browser). It uses 
 ## Part 1. Creating an OAuth client ID in Google Cloud
 
 ### 1.1 Project and API
-1. Open https://console.cloud.google.com/ and create a project (e.g. `rclone-pi`).
+1. Open https://console.cloud.google.com/ and create a project (e.g. `rclone-sync`).
 2. **APIs & Services → Library** → find **Google Drive API** → **Enable**.
 
 ### 1.2 Google Auth Platform (consent screen)
 1. **APIs & Services → OAuth consent screen** (Google Auth Platform section) → **Get started**.
 2. **Branding:**
-   - App name: `rclone-pi`
+   - App name: `rclone-sync`
    - User support email: your Gmail
    - App home page and Privacy policy link: any real https links (e.g. a GitHub Pages page or a public gist with one line: "Personal rclone backup tool, no user data is collected"). Google does not check the content, only the format.
    - Developer contact information: your email
@@ -33,14 +31,14 @@ Instructions for a headless machine (a Raspberry Pi without a browser). It uses 
 5. **Audience → Test users:** add your Gmail (required while the status is Testing).
 6. **Audience → Publish app → Confirm.** The status must become **In production**.
 
-> Important: if you leave the status as **Testing**, the refresh token dies after 7 days (`invalid_grant`) and the sync silently breaks. App verification is not required. At login Google shows the warning "Google hasn't verified this app": Advanced → Go to rclone-pi (unsafe).
+> Important: if you leave the status as **Testing**, the refresh token dies after 7 days (`invalid_grant`) and the sync silently breaks. App verification is not required. At login Google shows the warning "Google hasn't verified this app": Advanced → Go to rclone-sync (unsafe).
 
 ### 1.3 Creating the client
 1. **Google Auth Platform → Clients → Create client** (or Credentials → Create credentials → OAuth client ID).
-2. Application type: **Desktop app** (not Web application!). Name: `rclone-pi`.
+2. Application type: **Desktop app** (not Web application!). Name: `rclone-sync`.
 3. Copy the **Client ID** and **Client secret** (the secret may only be shown at creation).
 
-## Part 2. Configuring rclone on the Pi
+## Part 2. Configuring rclone on the server
 
 ```bash
 rclone config
@@ -58,7 +56,7 @@ Answers:
 | scope | `1` (Full access) |
 | service_account_file | empty |
 | Edit advanced config | `n` |
-| Use web browser to automatically authenticate | **`n`** (the Pi has no browser) |
+| Use web browser to automatically authenticate | **`n`** (the server has no browser) |
 
 rclone will print a command like:
 
@@ -70,14 +68,14 @@ rclone authorize "drive" "eyJ....long string...."
 
 1. Copy the command **in full**, including the long quoted string (it embeds your client_id and secret).
 2. Run it on the computer that has a browser and rclone.
-3. A browser opens: sign in to Google and allow access (Advanced → Go to rclone-pi (unsafe) → Continue).
+3. A browser opens: sign in to Google and allow access (Advanced → Go to rclone-sync (unsafe) → Continue).
 4. A block appears in the terminal:
    ```
    Paste the following into your remote machine --->
    {"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
    <---End paste
    ```
-5. Copy the JSON between the arrows and paste it on the Pi at the `config_token>` prompt.
+5. Copy the JSON between the arrows and paste it on the server at the `config_token>` prompt.
 6. For the Shared Drive question: `n` (for a regular "My Drive").
 7. Confirm saving: `y`, then `q`.
 

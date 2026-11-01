@@ -1,11 +1,11 @@
 [Unit]
-Description=Run gdrive-pull every 15 minutes
+Description=Run @NAME@-pull every 15 minutes
 
 [Timer]
 OnCalendar=*:0/15
 Persistent=true
 RandomizedDelaySec=30
-Unit=gdrive-pull.service
+Unit=@NAME@-pull.service
 
 [Install]
 WantedBy=timers.target
