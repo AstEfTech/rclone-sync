@@ -49,18 +49,51 @@ SCHEDULE="${SCHEDULE:-*:0/15}"
 # Optional pull.sh limits; when unset, the defaults in pull.sh apply
 MIN_FREE_GB="$(cfg min_free_gb)"
 KEEP_LOG_DAYS="$(cfg keep_log_days)"
-SRC_REMOTE="$(cfg_get "providers.$NAME.src_remote")"
-DST_DIR="$(cfg_get "providers.$NAME.dst_dir")"
 
 # variable:key it is read from (for the error message)
-for pair in "RUN_USER:common.run_user" "APP_DIR:common.app_dir" \
-            "SRC_REMOTE:providers.$NAME.src_remote" "DST_DIR:providers.$NAME.dst_dir"; do
+for pair in "RUN_USER:common.run_user" "APP_DIR:common.app_dir"; do
   var="${pair%%:*}"
   if [ -z "${!var}" ]; then
     echo "${pair#*:} is not set in config.yml" >&2
     exit 1
   fi
 done
+
+# Folder pairs: providers.<NAME>.pairs.<pair>.{src,dst,mode}; mode falls back to the
+# provider block, then common, then copy
+PAIR_NAMES=() PAIR_SRC=() PAIR_DST=() PAIR_MODE=()
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  key="providers.$NAME.pairs.$p"
+  src="$(cfg_get "$key.src")"
+  dst="$(cfg_get "$key.dst")"
+  mode="$(cfg_get "$key.mode")"
+  [ -n "$mode" ] || mode="$(cfg mode)"
+  mode="${mode:-copy}"
+  for pair in "src:$src" "dst:$dst"; do
+    if [ -z "${pair#*:}" ]; then
+      echo "$key.${pair%%:*} is not set in config.yml" >&2
+      exit 1
+    fi
+  done
+  if [[ ! "$p" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "pair name '$p' under providers.$NAME.pairs: use only letters, digits, - and _" >&2
+    exit 1
+  fi
+  case "$mode" in
+    copy|sync|move) ;;
+    *) echo "$key.mode must be copy, sync or move, got '$mode'" >&2; exit 1 ;;
+  esac
+  if [[ "$src" != *:* ]]; then
+    echo "$key.src ($src) must be <remote>:<path>" >&2
+    exit 1
+  fi
+  PAIR_NAMES+=("$p") PAIR_SRC+=("$src") PAIR_DST+=("$dst") PAIR_MODE+=("$mode")
+done < <(cfg_children "providers.$NAME.pairs")
+if [ "${#PAIR_NAMES[@]}" -eq 0 ]; then
+  echo "providers.$NAME.pairs has no folder pairs in config.yml" >&2
+  exit 1
+fi
 
 for pair in "min_free_gb:$MIN_FREE_GB" "keep_log_days:$KEEP_LOG_DAYS"; do
   if [ -n "${pair#*:}" ] && [[ ! "${pair#*:}" =~ ^[0-9]+$ ]]; then
@@ -81,29 +114,47 @@ fi
 
 # mount_point is optional: set it only when the data lives on a separate mounted disk
 if [ -n "$MOUNT_POINT" ]; then
-  case "$DST_DIR/" in
-    "${MOUNT_POINT%/}"/*) ;;
-    *) echo "providers.$NAME.dst_dir ($DST_DIR) must be inside mount_point ($MOUNT_POINT)" >&2; exit 1 ;;
-  esac
+  for i in "${!PAIR_NAMES[@]}"; do
+    case "${PAIR_DST[$i]}/" in
+      "${MOUNT_POINT%/}"/*) ;;
+      *) echo "providers.$NAME.pairs.${PAIR_NAMES[$i]}.dst (${PAIR_DST[$i]}) must be inside mount_point ($MOUNT_POINT)" >&2; exit 1 ;;
+    esac
+  done
 fi
 
 # nested <dir> <parent>: true if dir is parent itself or lies inside it
 nested() { case "${1%/}/" in "${2%/}/"*) return 0 ;; *) return 1 ;; esac; }
 
-# Two providers must not copy into the same directory (or one inside the other):
-# their locks are separate, so the syncs would run concurrently on the same files
+# No two pairs (of this or another provider) may use the same destination directory or
+# nest one inside the other: provider locks are separate, so syncs would run concurrently
+# on the same files, and a sync pair would delete what another pair put there
+labels=() dsts=()
+for i in "${!PAIR_NAMES[@]}"; do
+  labels+=("providers.$NAME.pairs.${PAIR_NAMES[$i]}") dsts+=("${PAIR_DST[$i]}")
+done
+own=${#labels[@]}
 for other_conf in "$ROOT"/*/provider.conf; do
   [ -f "$other_conf" ] || continue
   other_dir="$(cd "$(dirname "$other_conf")" && pwd)"
   [ "$other_dir" = "$HERE" ] && continue
   other_name="$(provider_name "$other_dir")"
   [ -n "$other_name" ] || continue
-  other_dst="$(cfg_get "providers.$other_name.dst_dir")"
-  [ -n "$other_dst" ] || continue
-  if nested "$DST_DIR" "$other_dst" || nested "$other_dst" "$DST_DIR"; then
-    echo "providers.$NAME.dst_dir ($DST_DIR) overlaps providers.$other_name.dst_dir ($other_dst): use separate directories" >&2
-    exit 1
-  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    d="$(cfg_get "providers.$other_name.pairs.$p.dst")"
+    [ -n "$d" ] || continue
+    labels+=("providers.$other_name.pairs.$p") dsts+=("$d")
+  done < <(cfg_children "providers.$other_name.pairs")
+done
+for ((a = 0; a < own; a++)); do
+  for ((b = 0; b < ${#labels[@]}; b++)); do
+    [ "$a" -eq "$b" ] && continue
+    [ "$b" -lt "$own" ] && [ "$b" -lt "$a" ] && continue
+    if nested "${dsts[$a]}" "${dsts[$b]}" || nested "${dsts[$b]}" "${dsts[$a]}"; then
+      echo "${labels[$a]}.dst (${dsts[$a]}) overlaps ${labels[$b]}.dst (${dsts[$b]}): use separate directories" >&2
+      exit 1
+    fi
+  done
 done
 
 if ! command -v rclone >/dev/null 2>&1; then
@@ -129,12 +180,15 @@ if [ -n "${MIN_RCLONE_VERSION:-}" ]; then
   fi
 fi
 
-REMOTE_NAME="${SRC_REMOTE%%:*}:"
-if ! rclone listremotes | grep -qxF "$REMOTE_NAME"; then
-  echo "rclone remote '$REMOTE_NAME' not found for user $RUN_USER." >&2
-  echo "Configure it first: see $PROVIDER/CONNECTION_README.md" >&2
-  exit 1
-fi
+REMOTES="$(rclone listremotes)"
+for src in "${PAIR_SRC[@]}"; do
+  REMOTE_NAME="${src%%:*}:"
+  if ! grep -qxF "$REMOTE_NAME" <<<"$REMOTES"; then
+    echo "rclone remote '$REMOTE_NAME' not found for user $RUN_USER." >&2
+    echo "Configure it first: see $PROVIDER/CONNECTION_README.md" >&2
+    exit 1
+  fi
+done
 
 INSTALL_DIR="$APP_DIR/$NAME-pull"
 mkdir -p "$INSTALL_DIR/log"
@@ -153,7 +207,13 @@ strip_cr "$COMMON/pull.timer.in" "$TMP_DIR/pull.timer.in"
 strip_cr "$COMMON/pull.service.in" "$TMP_DIR/pull.service.in"
 
 # The installed .env holds only this provider's resolved settings
-printf 'SRC_REMOTE=%q\nDST_DIR=%q\nMOUNT_POINT=%q\n' "$SRC_REMOTE" "$DST_DIR" "$MOUNT_POINT" > "$TMP_DIR/app.env"
+{
+  printf 'MOUNT_POINT=%q\n' "$MOUNT_POINT"
+  for arr in PAIR_NAMES PAIR_SRC PAIR_DST PAIR_MODE; do
+    declare -n ref="$arr"
+    printf '%s=(' "$arr"; printf ' %q' "${ref[@]}"; printf ' )\n'
+  done
+} > "$TMP_DIR/app.env"
 [ -z "$MIN_FREE_GB" ] || printf 'MIN_FREE_GB=%q\n' "$MIN_FREE_GB" >> "$TMP_DIR/app.env"
 [ -z "$KEEP_LOG_DAYS" ] || printf 'KEEP_LOG_DAYS=%q\n' "$KEEP_LOG_DAYS" >> "$TMP_DIR/app.env"
 
@@ -167,7 +227,7 @@ render() {
       -e "s|@DESCRIPTION@|$DESCRIPTION|g" \
       -e "s|@RUN_USER@|$RUN_USER|g" \
       -e "s|@INSTALL_DIR@|$INSTALL_DIR|g" \
-      -e "s|@DST_DIR@|$DST_DIR|g" \
+      -e "s|@DST_DIRS@|${PAIR_DST[*]}|g" \
       -e "s|@SCHEDULE@|$SCHEDULE|g" \
       "$1" > "$2"
 }
@@ -231,7 +291,7 @@ fi
 deployed=() skipped=() failed=()
 for i in "${targets[@]}"; do
   name="${names[$i]}"
-  if [ "$choice" = all ] && [ -z "$(cfg_get "providers.$name.dst_dir")" ]; then
+  if [ "$choice" = all ] && [ -z "$(cfg_children "providers.$name.pairs")" ]; then
     skipped+=("$name")
     continue
   fi

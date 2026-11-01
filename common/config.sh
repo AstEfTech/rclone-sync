@@ -37,6 +37,11 @@ cfg_get() {
   sed -n "s/^${1//./\\.}=//p" <<<"$CFG" | head -n 1
 }
 
+# cfg_children <a.b>: names of the direct child mappings of a.b, in file order (one per line)
+cfg_children() {
+  sed -n "s/^${1//./\\.}\.\([^.=]*\)\..*/\1/p" <<<"$CFG" | awk '!seen[$0]++'
+}
+
 # cfg <key>: providers.$NAME.<key>, else common.<key> (the provider block overrides common)
 cfg() {
   local v

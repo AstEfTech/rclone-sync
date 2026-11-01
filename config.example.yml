@@ -4,18 +4,23 @@
 # Each provider is deployed from the `common` block and its own block under `providers`,
 # so the settings of providers you do not use can stay as they are.
 # Nothing secret lives here: credentials stay in rclone.conf of the run user.
-# Indent with 2 spaces (no tabs); lists and multi-line values are not supported.
+# Indent with 2 spaces (no tabs); lists and multi-line values are not supported,
+# which is why folder pairs are named blocks (see `pairs` below).
 
 # Defaults for every provider; any key can be overridden in a provider block
 common:
   # User that rclone, the scripts and the systemd units run as (not root)
   run_user: rclone_user
 
-  # Optional: mount point of a separate disk. If set, dst_dir must be inside it and
+  # Optional: mount point of a separate disk. If set, every dst must be inside it and
   # each run is skipped while it is not mounted. Leave out (or empty) for a plain directory.
   mount_point: /mnt/storage
-  # Optional: a run is skipped when less than this many GB are free. Default: 5.
+  # Optional: a pair is skipped when less than this many GB are free. Default: 5.
   min_free_gb: 5
+
+  # Optional: default sync type of the pairs (copy | sync | move), see `providers` below.
+  # Can be overridden per provider and per pair. Default: copy.
+  mode: copy
 
   # Optional: when to run, a systemd OnCalendar expression (check with
   # `systemd-analyze calendar "<expr>"`). Default: every 15 minutes.
@@ -30,25 +35,45 @@ common:
   app_dir: /home/rclone_user
 
 providers:
+  # Each provider syncs one or more folder pairs: a source on the remote and a
+  # destination on the local disk. Pairs run one after another; a failing pair does not
+  # stop the others. The pair name (media, documents, ...) is a label of letters,
+  # digits, - and _.
+  #
+  # Sync type (`mode`; the pair's own value wins, then the provider block, then common,
+  # then copy):
+  #   copy  copy new and changed files, never delete anything (safe default)
+  #   sync  make dst an exact mirror of src: files missing in src are DELETED from dst
+  #   move  copy, then delete the files from src (the source gets emptied!)
+  # Destinations of different pairs must not overlap (the same dir or one inside another).
+
   # Google Drive (./deploy.sh gdrive)
   gdrive:
-    # Source: remote from rclone.conf and a folder on it
-    src_remote: gdrive:SomeDir
-
-    # Destination on the local disk (inside mount_point)
-    dst_dir: /mnt/storage/gdrive
+    pairs:
+      media:
+        # Source: remote from rclone.conf and a folder on it
+        src: gdrive:Media
+        # Destination on the local disk (inside mount_point)
+        dst: /mnt/storage/gdrive/media
+        mode: copy
 
   # iCloud Drive (./deploy.sh icloud)
   icloud:
-    # Source: remote from rclone.conf and a folder on it
-    # (for iCloud Photos use a remote created with service=photos,
-    # e.g. icloudphotos:PrimarySync/Favorites)
-    src_remote: icloud:SomeDir
+    pairs:
+      files:
+        src: icloud:SomeDir
+        dst: /mnt/storage/icloud/files
+        mode: copy
 
-    # Destination on the local disk (inside mount_point)
-    dst_dir: /mnt/storage/icloud
+      # iCloud Photos: a separate remote created with service=photos (read-only),
+      # see icloud/CONNECTION_README.md
+      photos:
+        src: icloudphotos:PrimarySync/Favorites
+        dst: /mnt/storage/icloud/photos
+        # no mode: the default from the common block (copy) applies
 
     # Optional overrides of the common block, for this provider only:
+    # mode: sync
     # schedule: "hourly"
     # min_free_gb: 10
     # keep_log_days: 30

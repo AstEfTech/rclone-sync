@@ -2,7 +2,7 @@
 Description=Copy @DESCRIPTION@ to local HDD
 Wants=network-online.target
 After=network-online.target
-RequiresMountsFor=@DST_DIR@
+RequiresMountsFor=@DST_DIRS@
 
 [Service]
 Type=oneshot

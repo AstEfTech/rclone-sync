@@ -64,7 +64,7 @@ rclone lsd icloudphotos:PrimarySync/              # albums
 rclone ls  "icloudphotos:PrimarySync/Favorites/"  # photos in an album
 ```
 
-To sync photos, set `src_remote: icloudphotos:PrimarySync/Favorites` (or another album) under `providers.icloud` in `config.yml`. The first listing of a very large album can take several minutes; later ones use a local cache in `~/.cache/rclone/iclouddrive-photos/`.
+To sync photos, set `src: icloudphotos:PrimarySync/Favorites` (or another album) in a pair under `providers.icloud.pairs` in `config.yml`. The first listing of a very large album can take several minutes; later ones use a local cache in `~/.cache/rclone/iclouddrive-photos/`.
 
 ## Reauthentication (token expired, password changed)
 
