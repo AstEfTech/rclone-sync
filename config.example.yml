@@ -18,7 +18,7 @@ common:
   # Optional: a pair is skipped when less than this many GB are free. Default: 5.
   min_free_gb: 5
 
-  # Optional: default sync type of the pairs (copy | sync | move), see `providers` below.
+  # Optional: default sync type of the pairs (copy | sync | move | twoway), see `providers` below.
   # Can be overridden per provider and per pair. Default: copy.
   mode: copy
 
@@ -45,6 +45,8 @@ providers:
   #   copy  copy new and changed files, never delete anything (safe default)
   #   sync  make dst an exact mirror of src: files missing in src are DELETED from dst
   #   move  copy, then delete the files from src (the source gets emptied!)
+  #   twoway  copy in both directions, nothing is deleted: a file added to src goes to
+  #         dst and a file added to dst goes to src; if both have it, the newer one wins
   # Destinations of different pairs must not overlap (the same dir or one inside another).
 
   # Google Drive (./deploy.sh gdrive)
@@ -56,6 +58,12 @@ providers:
         # Destination on the local disk (inside mount_point)
         dst: /mnt/storage/gdrive/media
         mode: copy
+
+      # Two-way without deletions: new files appear on both sides
+      shared:
+        src: gdrive:Shared
+        dst: /mnt/storage/gdrive/shared
+        mode: twoway
 
   # iCloud Drive (./deploy.sh icloud)
   icloud:

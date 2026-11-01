@@ -84,6 +84,7 @@ providers:
 | `copy` (default) | `rclone copy` | New and changed files are copied; nothing is ever deleted |
 | `sync` | `rclone sync` | `dst` becomes an exact mirror of `src`: files missing in `src` are **deleted** from `dst` |
 | `move` | `rclone move` | Files are copied, then **deleted from `src`** (the source gets emptied) |
+| `twoway` | `rclone copy` both ways, with `--update` | A file added to `src` goes to `dst` and a file added to `dst` goes to `src`; nothing is deleted. If both sides have the file, the newer one (by modification time) wins. A file deleted on one side comes back from the other. Not for read-only remotes such as iCloud Photos |
 
 `mode` is resolved per pair: the pair's own value, else the provider block, else `common`, else `copy`. Pairs of one provider run one after another within a single timer run and share its schedule, lock and log. Pair names may use letters, digits, `-` and `_`. Use `sync` and `move` only when you are sure: they delete data (`rclone sync --dry-run` is a good first check by hand).
 

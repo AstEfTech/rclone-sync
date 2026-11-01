@@ -81,8 +81,8 @@ while IFS= read -r p; do
     exit 1
   fi
   case "$mode" in
-    copy|sync|move) ;;
-    *) echo "$key.mode must be copy, sync or move, got '$mode'" >&2; exit 1 ;;
+    copy|sync|move|twoway) ;;
+    *) echo "$key.mode must be copy, sync, move or twoway, got '$mode'" >&2; exit 1 ;;
   esac
   if [[ "$src" != *:* ]]; then
     echo "$key.src ($src) must be <remote>:<path>" >&2

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One-way transfer remote -> local disk for each configured folder pair, with the rclone
 # command chosen per pair: copy (default, deletes nothing), sync (mirror, deletes extra
-# files at the destination) or move (deletes source files after transfer).
+# files at the destination), move (deletes source files after transfer) or twoway
+# (copy in both directions, deletes nothing).
 # Installed by deploy.sh as <NAME>-pull.sh next to provider.conf and a generated .env.
 # Run as run_user, not via sudo.
 # Debug: LOG_LEVEL=DEBUG ./<NAME>-pull.sh
@@ -53,6 +54,13 @@ if [ -n "$MOUNT" ] && ! mountpoint -q "$MOUNT"; then
   exit 1
 fi
 
+run_rclone() {
+  rclone "$@" \
+    "${RCLONE_ARGS[@]}" \
+    --stats 30s --stats-file-name-length 0 \
+    --log-file "$LOG" --log-level "$LOG_LEVEL"
+}
+
 # --- Pairs: one after another; a failed pair does not stop the others,
 # the exit code is that of the last failure
 rc=0
@@ -71,10 +79,14 @@ for i in "${!PAIR_NAMES[@]}"; do
 
   log "START [$name] $MODE $SRC -> $DST"
   prc=0
-  rclone "$MODE" "$SRC" "$DST" \
-    "${RCLONE_ARGS[@]}" \
-    --stats 30s --stats-file-name-length 0 \
-    --log-file "$LOG" --log-level "$LOG_LEVEL" || prc=$?
+  if [ "$MODE" = twoway ]; then
+    # Both directions with copy (never deletes); --update keeps the newer file when both
+    # sides have it, so an old copy never overwrites a fresher one
+    run_rclone copy "$SRC" "$DST" --update || prc=$?
+    [ "$prc" -ne 0 ] || run_rclone copy "$DST" "$SRC" --update || prc=$?
+  else
+    run_rclone "$MODE" "$SRC" "$DST" || prc=$?
+  fi
 
   if [ "$prc" -ne 0 ]; then
     log "ERROR [$name]: rclone exited with code $prc"
