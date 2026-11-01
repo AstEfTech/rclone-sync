@@ -16,7 +16,7 @@ common:
   mount_point: /mnt/storage
   # Optional: a run is skipped when less than this many GB are free. Default: 5.
   min_free_gb: 5
-  
+
   # Optional: when to run, a systemd OnCalendar expression (check with
   # `systemd-analyze calendar "<expr>"`). Default: every 15 minutes.
   # Keep the quotes: a bare * is not valid YAML.
